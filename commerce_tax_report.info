@@ -1,0 +1,7 @@
+name = Commerce Tax Report
+description = Generate tax reports for items sold via Drupal Commerce.
+package = Commerce (contrib)
+dependencies[] = entity
+dependencies[] = commerce_price
+dependencies[] = commerce_tax
+core = 7.x

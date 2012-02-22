@@ -1,0 +1,280 @@
+<?php
+
+/**
+ * @file
+ * Generate tax reports for items sold via Drupal Commerce.
+ */
+
+
+/**
+ * Implements hook_entity_info().
+ */
+function commerce_tax_report_entity_info() {
+  $info['commerce_tax_report'] = array(
+    'label' => t('Commerce Tax Report'),
+    'controller class' => 'CommerceTaxReportController',
+    'base table' => 'commerce_tax_report',
+    'fieldable' => TRUE,
+    'entity keys' => array(
+      'id' => 'tax_report_id',
+      'bundle' => 'type',
+    ),
+    'bundle keys' => array(
+      'bundle' => 'type',
+    ),
+    'creation callback' => 'commerce_tax_report_create',
+    'save callback' => 'commerce_tax_report_save',
+    'deletion callback' => 'commerce_tax_report_delete',
+    'access callback' => 'commerce_tax_report_access',
+    'module' => 'commerce_tax_report',
+  );
+
+  foreach (commerce_tax_rates() as $type => $rate) {
+    $info['commerce_tax_report']['bundles'][$type] = array(
+      'label' => $rate['display_title'],
+    );
+  }
+
+  return $info;
+}
+
+/**
+* Implements hook_entity_property_info().
+*/
+function commerce_tax_report_entity_property_info() {
+  $info = array();
+  $properties = &$info['commerce_tax_report']['properties'];
+
+  $properties['tax_report_id'] = array(
+    'label' => t('Tax report id'),
+    'type' => 'integer',
+    'description' => t('The identifier for the tax report.'),
+    'schema field' => 'tax_report_id',
+  );
+  $properties['order_id'] = array(
+    'label' => t('Commerce order'),
+    'type' => 'commerce_order',
+    'description' => t('The Commerce order associated with the tax report.'),
+    'schema field' => 'order_id',
+  );
+  $properties['type'] = array(
+    'label' => t('Tax report type'),
+    'type' => 'token',
+    'description' => t('The tax report type.'),
+    'schema field' => 'type',
+  );
+  $properties['created'] = array(
+    'label' => t('Date created'),
+    'type' => 'date',
+    'description' => t('The date the tax report was created.'),
+    'schema field' => 'created',
+  );
+  $properties['currency_code'] = array(
+    'label' => t('Currency code'),
+    'type' => 'text',
+    'description' => t('The currency code.'),
+    'schema field' => 'currency_code',
+  );
+  $properties['tax_rate'] = array(
+    'label' => t('Tax rate'),
+    'type' => 'decimal',
+    'description' => t('The tax rate expressed as a decimal fraction.'),
+    'schema field' => 'tax_rate',
+  );
+  $properties['taxable_amount'] = array(
+    'label' => t('Taxable amount'),
+    'type' => 'integer',
+    'description' => t('The taxable amount.'),
+    'schema field' => 'taxable_amount',
+  );
+  $properties['tax_collected'] = array(
+    'label' => t('Tax collected'),
+    'type' => 'integer',
+    'description' => t('The tax collected.'),
+    'schema field' => 'tax_collected',
+  );
+
+  return $info;
+}
+
+/**
+ * The Controller for CommerceTaxReport entities.
+ */
+class CommerceTaxReportController extends EntityAPIController {
+
+  /**
+   * Create a new tax report.
+   */
+  public function create(array $values = array()) {
+    $timestamp = time();
+
+    $values += array( 
+      'tax_report_id' => '',
+      'order_id' => '',
+      'type' => '',
+      'created' => $timestamp,
+      'currency_code' => '',
+      'tax_rate' => 0,
+      'taxable_amount' => 0,
+      'tax_collected' => 0,
+    );
+
+    return parent::create($values);
+  }
+
+}
+
+/**
+ * Create a tax report entity.
+ */
+function commerce_tax_report_create($values = array()) {
+  return entity_get_controller('commerce_tax_report')->create($values);
+}
+
+/**
+ * Load a tax report entity by ID.
+ */
+function commerce_tax_report_load($tax_report_id, $reset = FALSE) {
+  $tax_reports = model_load_multiple(array($tax_report_id), array(), $reset);
+  return reset($tax_reports);
+}
+
+/**
+ * Load multiple tax report entities by ID.
+ */
+function commerce_tax_report_load_multiple($tax_report_ids = FALSE, $conditions = array(), $reset = FALSE) {
+  return entity_load('commerce_tax_report', $tax_report_ids, $conditions, $reset);
+}
+
+/**
+ * Save a tax report entity.
+ */
+function commerce_tax_report_save(&$tax_report) {
+  return entity_get_controller('commerce_tax_report')->save($tax_report);
+}
+
+/**
+ * Delete a tax report entity.
+ */
+function commerce_tax_report_delete($tax_report) {
+  entity_get_controller('commerce_tax_report')->delete($tax_report);
+}
+
+/**
+ * Delete multiple tax report entities.
+ */
+function commerce_tax_report_delete_multiple(array $tax_report_ids) {
+  entity_get_controller('commerce_tax_report')->delete($tax_report_ids);
+}
+
+/**
+ * Implements hook_permission().
+ */
+function commerce_tax_report_permission() {
+  $permissions = array(
+    'administer commerce tax reports' => array(
+      'title' => t('Administer commerce tax reports'),
+    ),
+  );
+
+  return $permissions;
+}
+
+/**
+ * Determine access to tax reports.
+ */
+function commerce_tax_report_access($op, $tax_report = NULL, $account = NULL) {
+  return user_access('administer commerce tax reports', $account);
+}
+
+/**
+ * Implements hook_commerce_checkout_complete().
+ *
+ * Save tax reports for each order on checkout.
+ */
+function commerce_tax_report_commerce_checkout_complete($order) {
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+  $order_total = $order_wrapper->commerce_order_total->data->value();
+
+  foreach ($order_total['components'] as $component) {
+    // Find the tax components in the order.
+    if (strpos($component['name'], 'tax') === 0) {
+      $component_name = explode('|', $component['name']);
+      $type = $component_name[1];
+
+      $values = array(
+        'order_id' => $order->order_id,
+        'type' => $type,
+        'currency_code' => $component['price']['currency_code'],
+        'tax_rate' => $component['price']['data']['tax_rate']['rate'],
+        'taxable_amount' => ($component['price']['amount'] / $component['price']['data']['tax_rate']['rate']),
+        'tax_collected' => $component['price']['amount'],
+      );
+
+      $tax_report = entity_create('commerce_tax_report', $values);
+
+      // Call hook_commerce_tax_report_entity_presave().
+      module_invoke_all('commerce_tax_report_checkout_presave', $tax_report, $type, $component);
+
+      entity_save('commerce_tax_report', $tax_report);
+    }
+  }
+}
+
+/**
+ * Implements hook_views_data_alter().
+ *
+ * Add Commerce specific handlers for currency and amounts.
+ * Expose the tax_rate table so we can use the display_title.
+ */
+function commerce_tax_report_views_data_alter(&$data) {
+  $data['commerce_tax_report']['currency_code']['field'] = array(
+    'handler' => 'commerce_payment_handler_field_currency_code',
+    'click sortable' => TRUE,
+  );
+
+  $data['commerce_tax_report']['currency_code']['filter'] = array(
+    'handler' => 'commerce_payment_handler_filter_currency_code',
+  );
+
+  $data['commerce_tax_report']['taxable_amount']['field'] = array(
+    'handler' => 'commerce_payment_handler_field_amount',
+    'click sortable' => TRUE,
+  );
+
+  $data['commerce_tax_report']['tax_collected']['field'] = array(
+    'handler' => 'commerce_payment_handler_field_amount',
+    'click sortable' => TRUE,
+  );
+
+  // Add the tax rate table so we can get the tax rate display title.
+  $data['commerce_tax_rate']['table']['group']  = t('Commerce Tax Report');
+
+  $data['commerce_tax_rate']['table']['join']['commerce_tax_report'] = array(
+    'left_field' => 'type',
+    'field' => 'name',
+  );
+
+  $data['commerce_tax_rate']['table']['default_relationship']['commerce_tax_report'] = array(
+    'table' => 'commerce_tax_report',
+    'field' => 'type',
+  );
+
+  $data['commerce_tax_rate']['display_title'] = array(
+    'title' => t('Tax title'),
+    'help' => t('The display title of the tax rate.'),
+    'field' => array(
+      'handler' => 'views_handler_field',
+      'click sortable' => TRUE,
+    ),
+  );
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function commerce_tax_report_views_api() {
+  return array(
+    'api' => 3,
+  );
+}

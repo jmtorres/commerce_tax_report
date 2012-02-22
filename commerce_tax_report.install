@@ -1,0 +1,75 @@
+<?php
+
+/**
+ * @file
+ * Install a table for Commerce Tax Report entities.
+ */
+
+
+/**
+ * Implements hook_schema().
+ */
+function commerce_tax_report_schema() {
+  $schema = array();
+
+  $schema['commerce_tax_report'] = array(
+    'description' => 'The base table for tax report entities.',
+    'fields' => array(
+      'tax_report_id' => array(
+        'description' => 'Primary Key: Identifier for a tax report.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'order_id' => array(
+        'description' => 'The order id of the order being reported.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => 'The type of tax (the machine name of a tax rate defined via Commerce Tax).',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'created' => array(
+        'description' => 'The timestamp when the tax report was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'currency_code' => array(
+        'description' => 'The currency of the tax collected.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+      ),
+      'tax_rate' => array(
+        'description' => 'The tax rate expressed as a decimal fraction.',
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+      ),
+      'taxable_amount' => array(
+        'description' => 'The taxable amount.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'tax_collected' => array(
+        'description' => 'The tax collected.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('tax_report_id'),
+    'indexes' => array(
+      'type' => array('type'),
+    ),
+  );
+
+  return $schema;
+}
